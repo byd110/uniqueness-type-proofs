@@ -104,6 +104,7 @@ Inductive parameter_has_ty : tenv -> class_table -> list var -> list ty -> Prop 
   object_valid_type ((T, v) :: o) Γ ct (T :: fs)
 . *)
 
+
 (* statements types *)
 Inductive stmt_has_ty: tenv -> class_table -> stmt -> tenv -> Prop :=
   | ty_stmt_skip : forall Γ ct,
@@ -163,6 +164,7 @@ Inductive stmt_has_ty: tenv -> class_table -> stmt -> tenv -> Prop :=
     indexr m ms = Some (m_decl T1 T2 s t) ->
     tm_has_ty Γ ct (t <~ᵗ $y; $z) T2 ->
     stmt_has_ty Γ ct (s <~ˢ $y; $z) Γ ->
+    (* m_has_ty ct c m -> *)
     tm_has_ty Γ ct $z T1 -> (* only one parameter here, change it to para_has_ty in the future. *)
     stmt_has_ty Γ ct (smcall $x $y m $z) Γ
 
@@ -182,22 +184,15 @@ Inductive stmt_has_ty: tenv -> class_table -> stmt -> tenv -> Prop :=
     stmt_has_ty ((TCls c TSUnique)::(update Γ x (TCls c TSBot))) ct (open_rec_stmt 0 $(S (length Γ)) s) (T1' :: Γ') ->
     stmt_has_ty Γ ct (slettm (TCls c TSUnique) $x s) Γ'
 
-  | ty_stmt_sletnew: forall Γ ct c ps Ts s this s0 fs ms init ts,    (* var x : C2 = new C1 in S *) 
+  | ty_stmt_sletnew: forall Γ Γ' ct c ps Ts s this s0 fs ms init ts ts',    (* var x : C2 = new C1 in S *) 
                                                        (* var x : C = new C(ps) in S *)
     indexr c ct = Some(cls_def fs init ms) ->
     init = init_decl Ts s0 this ->
     closed_stmt 1 (length Γ) s ->
     closed_var_list 0 (length Γ) ps ->
     parameter_has_ty Γ ct ps fs ->
-    (* object_valid_type objrec Γ ct fs ->
-    (forall objrec', object_valid_semantic objrec' fs -> objrec = objrec') -> *)
-    (* need to make sure that objrec is the right result returned by constructor. *)
-    (* two ways of doing this:
-    1. extend the definition of constructor ("init" above) and make it assign every field through sstore. 
-       then the equality of type are also obvious.
-    2. take use of the definition of HeapOK and make sure the new object fit (maybe partial) description of an object in that def. *)
-    stmt_has_ty ((TCls c ts)::Γ) ct (open_rec_stmt 0 $(S (length Γ)) s) Γ -> 
-    stmt_has_ty Γ ct (sletnew (TCls c ts) (TCls c ts) ps s) Γ
+    stmt_has_ty ((TCls c ts)::Γ) ct (open_rec_stmt 0 $(S (length Γ)) s) ((TCls c ts')::Γ') -> 
+    stmt_has_ty Γ ct (sletnew (TCls c ts) (TCls c ts) ps s) Γ'
   
   | ty_stmt_sif: forall Γ ct x s1 s2,   
     tm_has_ty Γ ct $x TBool ->
@@ -205,23 +200,23 @@ Inductive stmt_has_ty: tenv -> class_table -> stmt -> tenv -> Prop :=
     stmt_has_ty Γ ct s2 Γ ->
     stmt_has_ty Γ ct (sif $x s1 s2) Γ
 
-  | ty_stmt_sloop: forall Γ ct x c l s s',   
+  | ty_stmt_sloop: forall Γ Γ' ct x c l s s',   
     tm_has_ty Γ ct $x TBool ->
     loop_body s c l s' ->
-    stmt_has_ty Γ ct s' Γ->
+    stmt_has_ty Γ ct s' Γ'->
     c < l ->
     closed_stmt 0 (length Γ) s ->
-    stmt_has_ty Γ ct (sloop $x c l s) Γ
+    stmt_has_ty Γ ct (sloop $x c l s) Γ'
  
-  | ty_stmt_sseq: forall Γ ct s1 s2 ,
-    stmt_has_ty Γ ct s1 Γ ->
+  | ty_stmt_sseq: forall Γ Γ1 Γ2 ct s1 s2 ,
+    stmt_has_ty Γ ct s1 Γ1 ->
     (* step s1 σ h ct σ' h' -> *)
-    stmt_has_ty Γ ct s2 Γ ->
+    stmt_has_ty Γ1 ct s2 Γ2 ->
     closed_stmt 0 (length Γ) s2 ->
     (* stmt_has_ty Γ σ' h' ct s2 -> *)
     (* should we also modify Γ so it can remain identical to the store 
     since we need this property in StoreOK? *)
-    stmt_has_ty Γ ct (sseq s1 s2) Γ
+    stmt_has_ty Γ ct (sseq s1 s2) Γ2
 .
 
 

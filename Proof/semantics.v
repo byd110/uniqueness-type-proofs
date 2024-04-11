@@ -230,31 +230,31 @@ Inductive step: stmt -> store -> heap -> class_table -> store -> heap -> Prop :=
    z < length σ ->
    step (smcall $x $y m $z) σ h ct (update σ' x (T, r)) h'  
   
-  | step_lettmC: forall σ h ct t r r' T s σ' h',
+  | step_lettmC: forall σ h ct t r r' T T' s σ' h',
     teval t σ h (T, r) ->
     (* notice here we only consider the case that s has single bound var
     (0 in terms of nameless var). is it like a 1-arg function? is it possible
     that let-binding can have more than one bound var in the stmt? *)
     (forall c, T <> TCls c TSUnique) ->
-    step (open_rec_stmt 0 $(S (length σ)) s) ((T, r) :: σ) h ct (((T, r') :: σ')) h' ->
+    step (open_rec_stmt 0 $(S (length σ)) s) ((T, r) :: σ) h ct (((T', r') :: σ')) h' ->
     step (slettm T t s) σ h ct σ' h'
 
-  | step_lettmU: forall σ h ct x r r' T c s σ' h',
+  | step_lettmU: forall σ h ct x r r' T' c s σ' h',
     teval $x σ h (TCls c TSUnique, r) ->
     (* notice here we only consider the case that s has single bound var
     (0 in terms of nameless var). is it like a 1-arg function? is it possible
     that let-binding can have more than one bound var in the stmt? *)
-    step (open_rec_stmt 0 $(S (length σ)) s) ((TCls c TSUnique, r) :: (update σ x (TCls c TSBot, r))) h ct (((T, r') :: σ')) h' ->
-    step (slettm T $x s) σ h ct σ' h'
+    step (open_rec_stmt 0 $(S (length σ)) s) ((TCls c TSUnique, r) :: (update σ x (TCls c TSBot, r))) h ct (((T', r') :: σ')) h' ->
+    step (slettm (TCls c TSUnique) $x s) σ h ct σ' h'
   
-  | step_letnew: forall σ σ' h h' ct c ps objrec s v fs init ms ts, 
+  | step_letnew: forall σ σ' h h' ct c ps objrec s v fs init ms ts ts', 
     (* comment below for assumption that we assign same initial value for any constructor args *)
     closed_var_list 0 (length σ) ps ->
     indexr c ct = Some(cls_def fs init ms) ->
     varlist_eval ps σ h objrec ->
     object_valid_semantic objrec σ h ct fs ->
     (* (forall objrec', object_valid_semantic objrec' h ct fs -> objrec = objrec') -> *)
-    step (open_rec_stmt 0 $(S (length σ)) s) (((TCls c ts), (&(length h))):: σ) (((TCls c ts), objrec) ::h) ct (((TCls c ts), v):: σ') h' ->
+    step (open_rec_stmt 0 $(S (length σ)) s) (((TCls c ts), (&(length h))):: σ) (((TCls c ts), objrec) ::h) ct (((TCls c ts'), v):: σ') h' ->
     step (sletnew (TCls c ts) (TCls c ts) ps s) σ h ct σ' h'                                   
     (* change sletnew TCls c TCls c into sletnew c0 TCls c when adding subtype. *)
 
@@ -299,7 +299,7 @@ Proof.
    assert (length ((T, r') :: σ') = S(length (σ'))).
    {
      repeat rewrite app_length. simpl. lia.
-   } lia. all: simpl in IHstep; try rewrite <- update_length in IHstep; lia.
+   }  all: simpl in IHstep; try rewrite <- update_length in IHstep; lia.
 Qed.
 
 Lemma step_extend_heap: forall {s σ h ct σ' h'}, step s σ h ct σ' h' -> 
@@ -455,19 +455,19 @@ Proof.
     specialize (teval_deterministic H3 H19) as H22; subst. reflexivity.
   (* slettmC *)
   - inversion H'; subst. specialize (teval_deterministic H H5) as H13; subst.
-    specialize (IHstep ((T, r'0) :: Hσ) Hh) as H13. intuition. inversion H3; subst.
+    specialize (IHstep ((T'0, r'0) :: Hσ) Hh) as H13. intuition. inversion H3; subst.
     auto. inversion H; inversion H10; subst. rewrite H16 in H7; inversion H7; subst.
     specialize (H0 c). contradiction.
   (* slettmU *)
   - inversion H'; subst. inversion H; inversion H4; subst. rewrite H16 in H7; inversion H7; subst.
     specialize (H10 c). contradiction. inversion H; inversion H9; subst. rewrite H15 in H6;
     inversion H6; subst. specialize (teval_deterministic H H9) as H13; subst.
-    specialize (IHstep ((T, r'0) :: Hσ) Hh) as H14. intuition. inversion H2; subst.
+    specialize (IHstep ((T'0, r'0) :: Hσ) Hh) as H14. intuition. inversion H2; subst.
     auto. 
   (* sletnew *)
   - inversion H'; subst. rewrite H16 in H0; inversion H0; subst.
     specialize (varlist_eval_deterministic H1 H17) as Heq. subst.
-    intuition; subst. all: specialize (IHstep ((TCls c ts, v0) :: Hσ) Hh); intuition.
+    intuition; subst. all: specialize (IHstep ((TCls c ts'0, v0) :: Hσ) Hh); intuition.
     inversion H5; auto.
   (* sif true *)
   - inversion H'; subst.
