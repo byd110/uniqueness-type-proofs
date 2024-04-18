@@ -220,15 +220,36 @@ Inductive step: stmt -> store -> heap -> class_table -> store -> heap -> Prop :=
    σ' = update σ y (TCls c' TSBot, &o) ->
    step (sstore $x f $y) σ h ct σ' h'
    
- | step_mcall: forall σ h ct x y m z c o fl init ml T1 T s t σ' h' ts r,
+ | step_mcallC: forall σ h ct x y m z c o fl init ml Tp s t σ' h' ts r,
    indexr y σ = Some ((TCls c ts), &o) ->  (* receiver *)
    indexr c ct = Some (cls_def fl init ml) ->
-   indexr m ml = Some (m_decl T1 T s t) ->   (* find the method def in ct*)
+   indexr m ml = Some (m_decl Tp TBool s t) ->   (* find the method def in ct*)
    step (s <~ˢ $y; $z) σ h ct σ' h' ->
-   teval (t <~ᵗ $y; $z) σ' h' (T, r) ->
+   teval (t <~ᵗ $y; $z) σ' h' (TBool, r) ->
    x < length σ ->
    z < length σ ->
-   step (smcall $x $y m $z) σ h ct (update σ' x (T, r)) h'  
+   step (smcall $x $y m $z) σ h ct (update σ' x (TBool, r)) h'  
+
+ | step_mcallS: forall σ h ct x y m z c c' o fl init ml Tp s t σ' h' ts r,
+   indexr y σ = Some ((TCls c ts), &o) ->  (* receiver *)
+   indexr c ct = Some (cls_def fl init ml) ->
+   indexr m ml = Some (m_decl Tp (TCls c' TSShared) s t) ->   (* find the method def in ct*)
+   step (s <~ˢ $y; $z) σ h ct σ' h' ->
+   teval (t <~ᵗ $y; $z) σ' h' (TCls c' TSShared, r) ->
+   x < length σ ->
+   z < length σ ->
+   step (smcall $x $y m $z) σ h ct (update σ' x (TCls c' TSShared, r)) h'  
+
+ | step_mcallU: forall σ h ct x y m z c c' o fl init ml Tp s t σ' h' ts r,
+   indexr y σ = Some ((TCls c ts), &o) ->  (* receiver *)
+   indexr c ct = Some (cls_def fl init ml) ->
+   indexr m ml = Some (m_decl Tp (TCls c' TSUnique) s t) ->   (* find the method def in ct*)
+   step (s <~ˢ $y; $z) σ h ct σ' h' ->
+   teval (t <~ᵗ $y; $z) σ' h' (TCls c' TSUnique, r) ->
+   (exists x', (t <~ᵗ $y; $z) = $(x')) -> 
+   x < length σ ->
+   z < length σ ->
+   step (smcall $x $y m $z) σ h ct (update σ' x (TCls c' TSUnique, r)) h'  
   
   | step_lettmC: forall σ h ct t r r' T T' s σ' h',
     teval t σ h (T, r) ->
@@ -448,11 +469,27 @@ Proof.
     rewrite H12 in H1; inversion H1; subst. rewrite H13 in H2; inversion H2; subst.
     rewrite H14 in H3; inversion H3; subst. rewrite H11 in H0; inversion H0; subst.
     split; reflexivity.
-  (* smcall *)
-  - inversion H'; subst. rewrite H10 in H; inversion H; subst.
+  (* smcallC *)
+  - inversion H'; subst. 2,3: rewrite H10 in H; inversion H; subst; erewrite H11 in H0; 
+    inversion H0; subst; rewrite H12 in H1; inversion H1; subst.  
+    rewrite H10 in H; inversion H; subst.
     rewrite H11 in H0; inversion H0; subst. rewrite H12 in H1; inversion H1; subst.
     specialize (IHstep σ'0 Hh). intuition; subst. 
     specialize (teval_deterministic H3 H19) as H22; subst. reflexivity.
+  (* smcallS *)
+  - inversion H'; subst. 1,3: rewrite H10 in H; inversion H; subst; erewrite H11 in H0; 
+    inversion H0; subst; rewrite H12 in H1; inversion H1; subst.  
+    rewrite H10 in H; inversion H; subst.
+    rewrite H11 in H0; inversion H0; subst. rewrite H12 in H1; inversion H1; subst.
+    specialize (IHstep σ'0 Hh). intuition; subst. 
+    specialize (teval_deterministic H3 H19) as H22; subst. reflexivity.
+  (* smcallU *)
+  - inversion H'; subst. 1,2: rewrite H11 in H; inversion H; subst; erewrite H12 in H0; 
+    inversion H0; subst; rewrite H13 in H1; inversion H1; subst.  
+    rewrite H11 in H; inversion H; subst.
+    rewrite H12 in H0; inversion H0; subst. rewrite H13 in H1; inversion H1; subst.
+    specialize (IHstep σ'0 Hh). intuition; subst. 
+    specialize (teval_deterministic H3 H15) as H24; subst. reflexivity.
   (* slettmC *)
   - inversion H'; subst. specialize (teval_deterministic H H5) as H13; subst.
     specialize (IHstep ((T'0, r'0) :: Hσ) Hh) as H13. intuition. inversion H3; subst.

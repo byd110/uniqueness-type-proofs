@@ -217,6 +217,14 @@ Proof.
   assert (length l < i) by lia. f_equal. apply IHl. auto.
 Qed.
 
+Lemma update_same: forall {A} {l : list A} {i v}, indexr i l = Some v -> update l i v = l.
+Proof.
+  induction l; intros; simpl; auto. bdestruct (i =? length l). subst.
+  rewrite indexr_head in H; auto. inversion H; subst. reflexivity.
+  rewrite indexr_skip in H; auto. specialize (IHl i v ). intuition.
+  rewrite H1. auto.
+Qed.
+
 Lemma indexr_skips' : forall {A} {xs xs' : list A} {i}, i >= length xs -> indexr i (xs' ++ xs) = indexr (i - length xs) xs'.
   induction xs; intros; intuition.
   - rewrite app_nil_r. simpl. rewrite Nat.sub_0_r. auto.

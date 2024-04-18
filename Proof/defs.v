@@ -147,7 +147,7 @@ Inductive wf_field_decl: list ty -> class_table -> Prop :=
   wf_field_decl [] ct
 | wf_field_decl_cons: forall ct T tail,
   wf_normal_ty T ct ->
-  (forall c ts, T = TCls c ts -> ts <> TSUnique) ->
+  (forall c ts, T = TCls c ts -> ts = TSShared) ->
   wf_field_decl tail ct ->
   wf_field_decl ( T :: tail) ct
 .
@@ -218,7 +218,7 @@ Lemma wf_field_inequal: forall {f fl ct c ts}, wf_field_decl fl ct -> indexr f f
 Proof.
   intros. induction H. inversion H0. destruct (f =? length tail) eqn: E1.
   + apply Nat.eqb_eq in E1; subst. rewrite indexr_head in H0. inversion H0; subst.
-    specialize (H1 c ts0). intuition.
+    specialize (H1 c ts0). intuition. subst. inversion H4.
   + apply Nat.eqb_neq in E1. rewrite indexr_skip in H0; auto.
 Qed.
 

@@ -56,12 +56,11 @@ Inductive tm_has_ty: tenv -> class_table -> tm -> ty -> Prop :=
     wf_ty (TCls c ts) ct ->
     tm_has_ty Γ ct $x (TCls c ts)
   
-  | ty_tm_facc: forall Γ ct x c f T ts c' ts',
+  | ty_tm_facc: forall Γ ct x c f T ts ,
     wf_ty T ct ->
     c < length ct ->
     tm_has_ty Γ ct $x (TCls c ts) ->
     wf_ty (TCls c ts) ct ->
-    (T = TCls c' ts' -> ts' = TSShared) ->
     f_has_ty ct c f T ->
     tm_has_ty Γ ct (tfacc $x f) T
 
@@ -91,18 +90,6 @@ Inductive parameter_has_ty : tenv -> class_table -> list var -> list ty -> Prop 
    parameter_has_ty Γ ct xs Ts ->
    parameter_has_ty Γ ct (($x)::xs) (T::Ts)
 .
-
-(* Inductive object_valid_type : list (ty * tm) -> tenv -> class_table -> list ty -> Prop := 
-| o_nil: forall Γ ct ,
-  object_valid_type [] Γ ct []
-
-| o_cons: forall fs Γ ct T v o,
-  value v ->
-  tm_has_ty Γ ct v T ->
-  length o = length fs ->
-  object_valid_type o Γ ct fs ->
-  object_valid_type ((T, v) :: o) Γ ct (T :: fs)
-. *)
 
 
 (* statements types *)
@@ -157,16 +144,16 @@ Inductive stmt_has_ty: tenv -> class_table -> stmt -> tenv -> Prop :=
     Γ' = update Γ y (TCls c' TSBot) ->
     stmt_has_ty Γ ct (sstore $x f $y) Γ'
 
-  | ty_stmt_mcall: forall Γ ct c x y z m s t T1 T2 fs init ms ts,    (* x := y.m (z) *)
-    tm_has_ty Γ ct $x T2 ->
+  | ty_stmt_mcall: forall Γ Γ' ct c x y z m s t Tp Tr fs init ms ts,    (* x := y.m (z) *)
+    tm_has_ty Γ ct $x Tr ->
     tm_has_ty Γ ct $y (TCls c ts) ->
     indexr c ct = Some(cls_def fs init ms) ->
-    indexr m ms = Some (m_decl T1 T2 s t) ->
-    tm_has_ty Γ ct (t <~ᵗ $y; $z) T2 ->
-    stmt_has_ty Γ ct (s <~ˢ $y; $z) Γ ->
-    (* m_has_ty ct c m -> *)
-    tm_has_ty Γ ct $z T1 -> (* only one parameter here, change it to para_has_ty in the future. *)
-    stmt_has_ty Γ ct (smcall $x $y m $z) Γ
+    indexr m ms = Some (m_decl Tp Tr s t) ->
+    tm_has_ty Γ' ct (t <~ᵗ $y; $z) Tr ->
+    tm_has_ty Γ' ct $x Tr ->
+    stmt_has_ty Γ ct (s <~ˢ $y; $z) Γ' ->
+    tm_has_ty Γ ct $z Tp -> (* only one parameter here, change it to para_has_ty in the future. *)
+    stmt_has_ty Γ ct (smcall $x $y m $z) (update Γ' x Tr)
 
   | ty_stmt_slettmC: forall Γ Γ' ct t T1 T1' s,       (* var x : T2 = t in S *)  (* bound variable is implicit *)
     closed_stmt 1 (length Γ) s ->
@@ -236,7 +223,7 @@ Proof. intros. induction H; auto.
       + constructor. apply indexr_var_some' in H. auto.
       + constructor. apply indexr_var_some' in H. auto.
       (* + constructor. apply indexr_var_some' in H. auto. *)
-      + constructor. inversion H1; subst. apply indexr_var_some' in H10. auto.
+      + constructor. inversion H1; subst. apply indexr_var_some' in H9. auto.
 Qed.
 
 
@@ -245,7 +232,7 @@ Proof. intros. induction H; auto; constructor; auto.
        all: try apply tm_has_ty_closed in H; inversion H; subst; auto;
        try apply tm_has_ty_closed in H0; inversion H0; subst; auto;
        try apply tm_has_ty_closed in H1; inversion H1; subst; auto;
-       try apply tm_has_ty_closed in H5; inversion H5; subst; auto. 
+       try apply tm_has_ty_closed in H6; inversion H6; subst; auto. 
 Qed.
 
 
@@ -273,6 +260,21 @@ Proof. intros. inversion H0; subst; intuition.
        inversion H. inversion H. 
        (* inversion H. *)
 Qed.
+
+(* Lemma type_preserve_base: forall {Γ ct x s c ts Γ'}, tm_has_ty Γ ct $x (TCls c ts) -> stmt_has_ty Γ ct s Γ' ->
+  (exists ts', tm_has_ty Γ' ct $x (TCls c ts')).
+Proof.
+  intros. induction H0; intuition.
+  + exists ts; auto.
+  + exists ts; auto.
+  + destruct (x =? x0) eqn: E1.
+    - apply Nat.eqb_eq in E1; subst. exists TSUnique. inversion H0; subst. econstructor; eauto.
+      all: inversion H; subst; rewrite H10 in H7; inversion H7; subst.
+      rewrite update_indexr_hit; auto. rewrite <- update_length; apply indexr_var_some' in H10; auto.
+      discriminate. inversion H1; subst; auto.
+    - apply Nat.eqb_neq in E1. destruct (x =? y) eqn: E2.
+      * apply Nat.eqb_eq in E2; subst. exists TSBot. inversion H1; inversion H0; subst.
+        econstructor; eauto. *)
 
 (* Lemma tm_store_irre: forall {Γ σ h ct t T}, 
   tm_has_ty Γ σ h ct t T -> 
