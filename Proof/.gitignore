@@ -33,3 +33,4 @@ nlia.cache
 nra.cache
 CoqMakefile
 CoqMakefile.conf
+.DS_Store
