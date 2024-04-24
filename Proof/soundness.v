@@ -39,10 +39,7 @@ Definition StoreOK (Γ: tenv)(σ: store)(h: heap)(ct: class_table) : Prop :=
    forall x Tx, indexr x Γ = Some (Tx) ->
    ((exists c vx, Tx = TCls c TSBot /\ indexr x σ = Some (TCls c TSBot, vx)) \/
    (exists vx, indexr x σ = Some (Tx, vx) /\ (value vx)  /\ 
-    value_runtime_ty σ h ct vx Tx /\ tm_has_ty Γ ct $x Tx /\
-
-    (forall c ts, Tx = (TCls c ts) -> (exists l fvalues, l < length h /\ vx = &l /\ 
-    indexr l h = Some ((TCls c ts), fvalues) ))))
+    value_runtime_ty σ h ct vx Tx /\ tm_has_ty Γ ct $x Tx ))
 .
 
 Lemma StoreOK_wf_ct: forall {Γ σ h ct}, StoreOK Γ σ h ct -> wf_ct ct.
@@ -159,8 +156,9 @@ Lemma weakening_tm_runtime: forall {σ h ct v T objrec fs c ts}, object_valid_se
   value v ->
   value_runtime_ty σ ((TCls c ts, objrec) :: h) ct v T.
 Proof.
-  intros. induction H0. 1-3: try econstructor; eauto. 2: eapply runtime_ty_unique; eauto. 
+  intros. induction H0. 1-3: try econstructor; eauto; try discriminate. 2: eapply runtime_ty_unique; eauto. 
   1,2: rewrite indexr_skip; eauto; apply indexr_var_some' in H2; lia.
+  eapply runtime_ty_subtype; eauto. rewrite indexr_skip; eauto. apply indexr_var_some' in H2; lia.
 Qed.
 
 Lemma weakening_tm_runtime_store_TBool: forall {σ h ct v v' T},
@@ -178,6 +176,7 @@ Proof.
   + right. unfold not in *. intros. destruct H3. destruct (x =? length σ) eqn:E1.
     - apply Nat.eqb_eq in E1; subst. erewrite indexr_head in H3. inversion H3.
     - apply Nat.eqb_neq in E1. erewrite indexr_skip in H3; eauto.
+  + intuition. eapply runtime_ty_subtype; eauto.
 Qed.
 
 
@@ -354,7 +353,7 @@ Proof.
   intros. inversion H. unfold StoreOK in *. intuition. simpl. lia. 
   destruct (x =? length Γ) eqn: E1.
   + apply Nat.eqb_eq in E1; subst. rewrite indexr_head in H6; auto. inversion H6; subst. 
-    inversion H0; subst.  
+    inversion H0; subst. 
     - right. exists ttrue. rewrite H5. rewrite indexr_head; auto. intuition. econstructor; eauto.
       econstructor; eauto. rewrite <- H5; rewrite indexr_head; auto. inversion H9.
     - right. exists tfalse. rewrite H5. rewrite indexr_head; auto. intuition. econstructor; eauto.
@@ -363,9 +362,16 @@ Proof.
       rewrite indexr_head; auto. inversion H0; subst; econstructor; eauto.
       econstructor; eauto. rewrite indexr_head; auto. discriminate.
       inversion H0; subst. eapply indexr_var_some in H18; eauto. destruct H18; eauto.
+      eapply indexr_var_some in H9; eauto. destruct H9; eauto.
       inversion H12; subst. exists l, fs. intuition. apply indexr_var_some' in H10; auto.
       left. exists c, &l. intuition. rewrite H5. rewrite indexr_head; auto.
     - specialize (H2 c). contradiction.
+    - right. exists &l; intuition. rewrite H5; rewrite indexr_head; auto.
+      eapply runtime_ty_subtype; eauto. econstructor; eauto. rewrite indexr_head; auto. discriminate.
+      inversion H0; subst. eapply indexr_var_some in H17; eauto. destruct H17; eauto.
+      eapply indexr_var_some in H9; eauto. destruct H9; eauto.
+      inversion H11; subst. exists l, fs. intuition. apply indexr_var_some' in H10; auto.
+      left. exists c, &l. intuition. rewrite H5. rewrite indexr_head; auto.
   + apply Nat.eqb_neq in E1. rewrite indexr_skip in H6; auto. specialize (H8 x Tx).
     intuition. 
     - left. destruct H8 as [c' [v' H8]]. exists c', v'. intuition. rewrite indexr_skip; auto.

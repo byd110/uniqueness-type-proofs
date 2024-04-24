@@ -59,6 +59,23 @@ Inductive value : tm -> Prop :=
 
 #[global] Hint Constructors value : core.
 
+Definition dom (T: ty) : ty := 
+  match T with 
+  | TACls c ts ts' => TCls c ts
+  | TCls c ts => TCls c ts
+  | TBool => TBool
+  end
+.
+
+Definition codom (T: ty) : ty := 
+  match T with 
+  | TACls c ts ts' => TCls c ts'
+  | TCls c ts => TCls c ts
+  | TBool => TBool
+  end
+.
+
+
 (* statement *)
 Inductive stmt : Type :=
   | sskip   : stmt                                          (* skip *)
@@ -109,128 +126,6 @@ Inductive class: Type :=
  
 (* the index is the defining class name *)  
 Definition class_table := list class. 
-Inductive wf_constructor : list ty (* fields ty *) -> (constructor_decl ) -> Prop :=
-  | wf_init: forall fds stmt tm,
-    wf_constructor fds (init_decl fds stmt tm)
-.
-
-
-Inductive wf_ty: ty -> class_table -> Prop :=
-  (* | wf_TBot : forall ct,
-     wf_ty TBot ct  
-  | wf TTop : forall ct,
-    wf_ty TTop ct *)
-  | wf_TCls : forall c ct cd ts,
-    indexr c ct = Some cd ->
-    wf_ty (TCls c ts) ct
-  | wf_Bool:  forall ct,
-    wf_ty TBool ct
-  (* | wf_TUnit: forall ct,
-    wf_ty TUnit ct *)
-.
-#[global] Hint Constructors wf_ty : core.
-
-(* used in wf_ct *)
-Inductive wf_normal_ty : ty -> class_table -> Prop :=
- | wf_p_Tcls : forall c ct ts, 
-   wf_ty (TCls c ts) ct ->
-   ts <> TSBot ->
-   wf_normal_ty (TCls c ts) ct
- | wf_p_Bool:  forall ct,
-   wf_normal_ty (TBool) ct
-. 
-#[global] Hint Constructors wf_normal_ty : core.
-
-
-Inductive wf_field_decl: list ty -> class_table -> Prop :=
-| wf_field_decl_nil: forall ct,
-  wf_field_decl [] ct
-| wf_field_decl_cons: forall ct T tail,
-  wf_normal_ty T ct ->
-  (forall c ts, T = TCls c ts -> ts = TSShared) ->
-  wf_field_decl tail ct ->
-  wf_field_decl ( T :: tail) ct
-.
-#[global] Hint Constructors wf_field_decl : core.
-
-Inductive wf_meth_decls: list meth_decl -> class_table -> Prop :=
-  | wf_meth_decls_nil: forall ct,
-    wf_meth_decls [] ct
-  | wf_meth_decls_cons: forall Tp Tr s t tail ct,
-    wf_normal_ty Tp ct ->
-    wf_normal_ty Tr ct ->
-    wf_meth_decls tail ct ->
-    wf_meth_decls ((m_decl Tp Tr s t):: tail) ct
-.
-#[global] Hint Constructors wf_meth_decls : core.
-
-(* check inheritance;  *)
-Inductive wf_ct : class_table -> Prop :=
-  | wf_ct_nil : wf_ct [] 
-  (* | wf_ct_obj :
-      wf_ct  [cls_object ] *)
-  | wf_ct_cons: forall  ct init fl ml,
-      wf_ct ct ->
-      wf_meth_decls ml ct ->
-      wf_field_decl fl ct ->             (* well-formed method declration: types *)
-      wf_ct  ((cls_def fl init ml) :: ct)   (* list grows to the left *)
-.  
-#[global] Hint Constructors wf_ct : core.
-
-Lemma wf_ct_inversion: forall{c ct}, wf_ct (c::ct) -> wf_ct ct.
-Proof. intros. inversion H. subst. auto.
-Qed. 
-
-Lemma wf_hit: forall {c ct}, wf_ct ct -> c < length ct ->
-  (exists init fl ml, indexr c ct = Some (cls_def fl init ml)).
-Proof.
-  intros. induction H. inversion H0. destruct (c =? length ct) eqn: E1.
-  + apply Nat.eqb_eq in E1. subst. exists init, fl, ml. apply indexr_head.
-  + apply Nat.eqb_neq in E1. assert (length (cls_def fl init ml :: ct) = S (length ct)) by auto.
-    rewrite H3 in H0. assert (c < length ct) by lia. intuition. destruct H5 as [init' [fl' [ml' H5]]].
-    exists init', fl', ml'. rewrite indexr_skip; auto.
-Qed. 
-
-Lemma wf_field_hit: forall {f fl ct Tf}, wf_field_decl fl ct -> indexr f fl = Some Tf ->
-  wf_ty Tf ct.
-Proof.
-  intros. induction H. inversion H0. destruct (f =? length tail) eqn: E1.
-  + apply Nat.eqb_eq in E1; subst. rewrite indexr_head in H0. inversion H0; subst.
-    inversion H; auto.
-  + apply Nat.eqb_neq in E1. rewrite indexr_skip in H0; auto.
-Qed.
-
-Lemma wf_ct_to_Tf: forall {c ct init fl ml f Tf}, wf_ct ct -> indexr c ct = Some (cls_def fl init ml) ->
-  indexr f fl = Some Tf ->
-  wf_ty Tf ct.
-Proof.
-  intros. induction H. inversion H0. destruct (c =? length ct) eqn: E1.
-  + apply Nat.eqb_eq in E1; subst. rewrite indexr_head in H0; subst. inversion H0; subst.
-    specialize (wf_field_hit H3 H1) as H4. inversion H4; subst. specialize (indexr_var_some' H5) as H5'.
-    econstructor; eauto. erewrite indexr_skip; eauto. lia. all: econstructor; eauto.
-  + apply Nat.eqb_neq in E1. rewrite indexr_skip in H0; auto. intuition.
-    inversion H4; subst. econstructor; eauto. erewrite indexr_skip; eauto. apply indexr_var_some' in H5; lia.
-    all: econstructor; eauto.
-Qed.
-
-Lemma wf_field_inequal: forall {f fl ct c ts}, wf_field_decl fl ct -> indexr f fl = Some (TCls c ts) ->
-  ts <> TSUnique.
-Proof.
-  intros. induction H. inversion H0. destruct (f =? length tail) eqn: E1.
-  + apply Nat.eqb_eq in E1; subst. rewrite indexr_head in H0. inversion H0; subst.
-    specialize (H1 c ts0). intuition. subst. inversion H4.
-  + apply Nat.eqb_neq in E1. rewrite indexr_skip in H0; auto.
-Qed.
-
-Lemma wf_ct_to_Tf_ts: forall {c' ct init fl ml f c ts}, wf_ct ct -> indexr c ct = Some (cls_def fl init ml) ->
-  indexr f fl = Some (TCls c' ts) ->
-  ts <> TSUnique.
-Proof.
-  intros. induction H. inversion H0. destruct (c =? length ct) eqn: E1.
-  + apply Nat.eqb_eq in E1; subst. rewrite indexr_head in H0. inversion H0; subst.
-    specialize (wf_field_inequal H3 H1) as Heq. intuition.
-  + apply Nat.eqb_neq in E1. rewrite indexr_skip in H0; auto.
-Qed.
 
 (* open and close *)
 Definition open_var (k: nat)(u: var)(x: var) : var :=

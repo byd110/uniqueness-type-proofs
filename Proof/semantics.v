@@ -82,6 +82,11 @@ Inductive value_runtime_ty: store -> heap -> class_table -> tm -> ty -> Prop :=
   (exists! x, indexr x σ = Some (TCls c TSUnique, &l)) \/
   ~(exists x, indexr x σ = Some (TCls c TSUnique, &l)) ->
   value_runtime_ty σ h ct (&l) (TCls c TSUnique)
+
+| runtime_ty_subtype: forall σ h ct c l fs,
+  c < length ct ->
+  indexr l h = Some (TCls c TSUnique, fs) ->
+  value_runtime_ty σ h ct (&l) (TCls c TSShared)
 .
 
 
