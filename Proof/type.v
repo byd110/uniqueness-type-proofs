@@ -385,6 +385,7 @@ Proof. intros. inversion H0; subst; intuition.
        (* inversion H. *)
 Qed.
 
+
 (* Lemma type_preserve_base: forall {Γ ct x s c ts Γ'}, tm_has_ty Γ ct $x (TCls c ts) -> stmt_has_ty Γ ct s Γ' ->
   (exists ts', tm_has_ty Γ' ct $x (TCls c ts')).
 Proof.
