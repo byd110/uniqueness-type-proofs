@@ -25,12 +25,37 @@ Definition tenv := list ty.  (* static type env *)
 
 (* field types *)
 Inductive f_has_ty : class_table -> nat (* class name *) -> nat (* field name *) ->  ty  ->  Prop :=
-  | ty_f: forall c ct fl init ml f T, 
-    indexr c ct = Some(cls_def fl init ml) ->
+  | ty_f: forall c d ct fl init ml f T, 
+    indexr c ct = Some(cls_def d fl init ml) ->
     indexr f fl = Some  T ->
     wf_ty T ct ->
     (* wf_normal_ty T ct -> *)
     f_has_ty ct c f T
+.
+
+Inductive intersection: tenv -> tenv -> tenv -> Prop :=
+  | inter_nil: intersection [] [] []
+
+  | inter_shared: forall Γ1 Γ2 Γ' c,
+    length Γ1 = length Γ2 ->
+    intersection Γ1 Γ2 Γ' ->
+    intersection ((TCls c TSShared) :: Γ1) ((TCls c TSShared) :: Γ2) ((TCls c TSShared) :: Γ')
+  
+  | inter_unique: forall Γ1 Γ2 Γ' c,
+    length Γ1 = length Γ2 ->
+    intersection Γ1 Γ2 Γ' ->
+    intersection ((TCls c TSUnique) :: Γ1) ((TCls c TSUnique) :: Γ2) ((TCls c TSUnique) :: Γ')
+  
+  | inter_bot: forall Γ1 Γ2 Γ' c,
+    length Γ1 = length Γ2 ->
+    intersection Γ1 Γ2 Γ' ->
+    intersection ((TCls c TSBot) :: Γ1) ((TCls c TSBot) :: Γ2) ((TCls c TSBot) :: Γ')
+  
+  | inter_else: forall Γ1 Γ2 Γ' c ts1 ts2,
+    length Γ1 = length Γ2 ->
+    intersection Γ1 Γ2 Γ' ->
+    ts1 <> ts2 ->
+    intersection ((TCls c ts1) :: Γ1) ((TCls c ts2) :: Γ2) ((TCls c TSBot) :: Γ')
 .
 
 
@@ -64,6 +89,12 @@ Inductive tm_has_ty: tenv -> class_table -> tm -> ty -> Prop :=
     f_has_ty ct c f T ->
     tm_has_ty Γ ct (tfacc $x f) T
 
+  | ty_tm_sub: forall Γ ct t T U,
+    tm_has_ty Γ ct t T ->
+    T <: U ~ ct ->
+    (forall c ts, U = TCls c ts -> ts <> TSBot) ->
+    tm_has_ty Γ ct t U
+
   (* | ty_tm_oid: forall Γ h ct l c object,
     c < length ct ->
     indexr l h = Some ((TCls c), object) ->
@@ -78,6 +109,7 @@ Inductive tm_has_ty: tenv -> class_table -> tm -> ty -> Prop :=
     tm_has_ty Γ h ct v T ->
     tm_has_ty Γ h ct (toidfacc oid f) T *)
 .
+
 
 (* constructor's parameter list types *)
 
@@ -144,10 +176,10 @@ Inductive stmt_has_ty: tenv -> class_table -> stmt -> tenv -> Prop :=
     Γ' = update Γ y (TCls c' TSBot) ->
     stmt_has_ty Γ ct (sstore $x f $y) Γ'
 
-  | ty_stmt_mcallC: forall Γ Γ' ct c x y z m s t Tp fs init ms ts,    (* x := y.m (z) *)
+  | ty_stmt_mcallC: forall Γ Γ' ct c d x y z m s t Tp fs init ms ts,    (* x := y.m (z) *)
     tm_has_ty Γ ct $x TBool ->
     tm_has_ty Γ ct $y (TCls c ts) ->
-    indexr c ct = Some(cls_def fs init ms) ->
+    indexr c ct = Some(cls_def d fs init ms) ->
     indexr m ms = Some (m_decl Tp TBool s t) ->
     tm_has_ty Γ' ct (t <~ᵗ $y; $z) TBool ->
     tm_has_ty Γ' ct $x TBool ->
@@ -155,10 +187,10 @@ Inductive stmt_has_ty: tenv -> class_table -> stmt -> tenv -> Prop :=
     tm_has_ty Γ ct $z Tp -> (* only one parameter here, change it to para_has_ty in the future. *)
     stmt_has_ty Γ ct (smcall $x $y m $z) Γ'
 
-  | ty_stmt_mcallS: forall Γ Γ' ct c c' x y z m s t Tp fs init ms ts ts' ts'',    (* x := y.m (z) *)
+  | ty_stmt_mcallS: forall Γ Γ' ct c d c' x y z m s t Tp fs init ms ts ts' ts'',    (* x := y.m (z) *)
     tm_has_ty Γ ct $x (TCls c' ts') ->
     tm_has_ty Γ ct $y (TCls c ts) ->
-    indexr c ct = Some(cls_def fs init ms) ->
+    indexr c ct = Some(cls_def d fs init ms) ->
     indexr m ms = Some (m_decl Tp (TCls c' TSShared) s t) ->
     tm_has_ty Γ' ct (t <~ᵗ $y; $z) (TCls c' TSShared) ->
     tm_has_ty Γ' ct $x (TCls c' ts'') ->
@@ -166,10 +198,10 @@ Inductive stmt_has_ty: tenv -> class_table -> stmt -> tenv -> Prop :=
     tm_has_ty Γ ct $z Tp -> (* only one parameter here, change it to para_has_ty in the future. *)
     stmt_has_ty Γ ct (smcall $x $y m $z) (update Γ' x (TCls c' TSShared))
 
-  | ty_stmt_mcallU: forall Γ Γ' ct c c' x tx y z m s t Tp fs init ms ts ts' ts'',    (* x := y.m (z) *)
+  | ty_stmt_mcallU: forall Γ Γ' ct c d c' x tx y z m s t Tp fs init ms ts ts' ts'',    (* x := y.m (z) *)
     tm_has_ty Γ ct $x (TCls c' ts') ->
     tm_has_ty Γ ct $y (TCls c ts) ->
-    indexr c ct = Some(cls_def fs init ms) ->
+    indexr c ct = Some(cls_def d fs init ms) ->
     indexr m ms = Some (m_decl Tp (TCls c' TSUnique) s t) ->
     tm_has_ty Γ' ct (t <~ᵗ $y; $z) (TCls c' TSUnique) ->
     tm_has_ty Γ' ct $x (TCls c' ts'') ->
@@ -194,9 +226,9 @@ Inductive stmt_has_ty: tenv -> class_table -> stmt -> tenv -> Prop :=
     stmt_has_ty ((TCls c TSUnique)::(update Γ x (TCls c TSBot))) ct (open_rec_stmt 0 $(S (length Γ)) s) (T1' :: Γ') ->
     stmt_has_ty Γ ct (slettm (TCls c TSUnique) $x s) Γ'
 
-  | ty_stmt_sletnew: forall Γ Γ' ct c ps Ts s this s0 fs ms init ts ts',    (* var x : C2 = new C1 in S *) 
+  | ty_stmt_sletnew: forall Γ Γ' ct c d ps Ts s this s0 fs ms init ts ts',    (* var x : C2 = new C1 in S *) 
                                                        (* var x : C = new C(ps) in S *)
-    indexr c ct = Some(cls_def fs init ms) ->
+    indexr c ct = Some(cls_def d fs init ms) ->
     init = init_decl Ts s0 this ->
     closed_stmt 1 (length Γ) s ->
     closed_var_list 0 (length Γ) ps ->
@@ -232,8 +264,8 @@ Inductive stmt_has_ty: tenv -> class_table -> stmt -> tenv -> Prop :=
 
 (* type-check method body *)
 Inductive m_has_ty:class_table -> nat (* class name *) -> nat (* method name *) -> Prop :=
-  | ty_m: forall ct c m fl init ml Tr Tp t s ts Γ,              (* implicit (lambda ret. s; t) t1 *)
-    indexr c ct  = Some(cls_def fl init ml) ->
+  | ty_m: forall ct c d m fl init ml Tr Tp t s ts Γ,              (* implicit (lambda ret. s; t) t1 *)
+    indexr c ct  = Some(cls_def d fl init ml) ->
     indexr m ml = Some(m_decl Tp Tr s t) ->
     stmt_has_ty (Tr :: Tp :: [(TCls c ts)]) ct s Γ ->
     tm_has_ty (Tr :: Tp :: [(TCls c ts)]) ct t Tr ->
@@ -246,7 +278,7 @@ Proof. intros. induction H; auto.
       + constructor. apply indexr_var_some' in H. auto.
       + constructor. apply indexr_var_some' in H. auto.
       (* + constructor. apply indexr_var_some' in H. auto. *)
-      + constructor. inversion H1; subst. apply indexr_var_some' in H9. auto.
+      + constructor. inversion IHtm_has_ty; subst. auto.
 Qed.
 
 
@@ -260,15 +292,17 @@ Qed.
 
 
 Lemma f_ty_inversion: forall {ct c f T}, wf_ct ct -> f_has_ty ct c f T -> 
-      exists fl init ml, indexr c ct = Some (cls_def fl init ml) 
+      exists d fl init ml, indexr c ct = Some (cls_def d fl init ml) 
               /\ indexr f fl = Some T.
 Proof. intros. induction H0. 
-       + exists fl. exists init. exists ml.  intuition.
+       + exists d, fl, init, ml.  intuition.
 Qed.
 
 Lemma tfacc_type_inversion: forall {Γ ct x f T}, wf_ct ct -> tm_has_ty Γ ct (tfacc $ x f) T -> 
-  exists c, c < length ct -> f_has_ty ct c f T.
-Proof. intros. inversion H0. subst. exists c. auto.
+  exists c U, c < length ct -> (f_has_ty ct c f U /\ U <: T ~ ct).
+Proof. intros. remember (tfacc $ x f) as t. induction H0; inversion Heqt; subst.
+       exists c, T; intuition. intuition. destruct H5 as [c [U' H5]]. exists c, U'; intuition.
+       econstructor; eauto.  
 Qed.
 
 
@@ -279,10 +313,44 @@ Qed. *)
 
 Lemma tbool_inversion: forall {Γ ct v}, (value v) -> tm_has_ty Γ ct v TBool -> 
            (v = ttrue \/ v = tfalse).
-Proof. intros. inversion H0; subst; intuition.
-       inversion H. inversion H. 
-       (* inversion H. *)
+Proof. intros. induction H0; intuition.
+       all: inversion H.
 Qed.
+
+Lemma sub_var_inversion: forall {Γ ct x T}, tm_has_ty Γ ct $x T -> 
+  (exists U, indexr x Γ = Some U /\ tm_has_ty Γ ct $x U /\
+   U <: T ~ ct /\ wf_ty U ct).
+Proof.
+  intros. remember (tvar $x) as t. induction H; inversion Heqt; subst.
+  assert (tm_has_ty Γ ct $x TBool). econstructor; eauto. exists TBool; auto.
+  assert (tm_has_ty Γ ct $x (TCls c ts)). econstructor; eauto. exists (TCls c ts); auto.
+  intuition. destruct H3 as [U' H3]. exists U'. intuition. econstructor; eauto.
+Qed.
+
+Lemma sub_ts_not_bot: forall {Γ ct t c ts}, wf_ct ct -> tm_has_ty Γ ct t (TCls c ts) ->
+  ts <> TSBot.
+Proof.
+  intros. remember (TCls c ts) as T. generalize dependent ts. generalize dependent c.
+  induction H0; intros; inversion HeqT; subst. auto. inversion H4; subst. 
+  specialize (wf_ct_to_Tf_shared H H6 H7) as Hts. subst. discriminate. 
+  specialize (H2 c ts); intuition.
+Qed.
+
+Lemma sub_facc_inversion: forall {Γ ct x f T}, tm_has_ty Γ ct (tfacc $ x f) T ->
+  (exists U c ts, tm_has_ty Γ ct $x (TCls c ts) /\ f_has_ty ct c f U /\ U <: T ~ ct).
+Proof.
+  intros. remember (tfacc $ x f) as t. induction H; inversion Heqt; subst.
+  exists T, c, ts. intuition. intuition. destruct H3 as [U' [c [ts H3]]].
+  exists U', c, ts. intuition. econstructor; eauto. 
+Qed.
+
+(* Lemma sub_f_has_ty: forall {ct c c' f T ts}, f_has_ty ct c f T -> (TCls c' ts) <: (TCls c ts) ~ ct ->
+  f_has_ty ct c' f T.
+Proof.
+  intros. remember (TCls c' ts) as T1; remember (TCls c ts) as T2. induction H0. 
+  rewrite HeqT1 in HeqT2; inversion HeqT2; subst; auto. 
+  specialize (sub_cls_inversion H2) as Heq.
+  destruct Heq as [c'' Heq]; subst. *)
 
 (* Lemma type_preserve_base: forall {Γ ct x s c ts Γ'}, tm_has_ty Γ ct $x (TCls c ts) -> stmt_has_ty Γ ct s Γ' ->
   (exists ts', tm_has_ty Γ' ct $x (TCls c ts')).

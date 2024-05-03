@@ -82,6 +82,11 @@ Inductive value_runtime_ty: store -> heap -> class_table -> tm -> ty -> Prop :=
   (exists! x, indexr x σ = Some (TCls c TSUnique, &l)) \/
   ~(exists x, indexr x σ = Some (TCls c TSUnique, &l)) ->
   value_runtime_ty σ h ct (&l) (TCls c TSUnique)
+
+| runtime_ty_sub: forall σ h ct t T U,
+  value_runtime_ty σ h ct t T ->
+  T <: U ~ ct ->
+  value_runtime_ty σ h ct t U
 .
 
 
@@ -107,12 +112,13 @@ Inductive object_valid_semantic : list (ty * tm) -> store -> heap -> class_table
 | o_nil: forall σ h ct,
   object_valid_semantic [] σ h ct []
 
-| o_cons: forall fs T v o σ h ct,
+| o_cons: forall fs U T v o σ h ct,
   value v ->
-  value_runtime_ty σ h ct v T ->
+  value_runtime_ty σ h ct v U ->
   length o = length fs ->
   object_valid_semantic o σ h ct fs ->
-  object_valid_semantic ((T, v) :: o) σ h ct (T :: fs)
+  U <: T ~ ct ->
+  object_valid_semantic ((U, v) :: o) σ h ct (T :: fs)
 .
 
 Inductive loop_body : stmt -> nat -> nat -> stmt -> Prop := 
@@ -173,6 +179,13 @@ Inductive step: stmt -> store -> heap -> class_table -> store -> heap -> Prop :=
    σ' = update σ x (TCls c TSShared, v) ->
    step (sassgn $x $y) σ h ct σ' h 
 
+ (* | step_assgnS': forall σ h ct x y v c σ',
+   indexr y σ = Some (TCls c TSUnique, v) ->
+   value v ->
+   x < length σ ->
+   σ' = update (update σ y (TCls c TSShared, v)) x (TCls c TSShared, v) ->
+   step (sassgn $x $y) σ h ct σ' h  *)
+
  | step_load: forall σ h ct x y f c l fs v ts T,
    indexr y σ = Some ((TCls c ts), (toid l)) ->
    indexr l h = Some ((TCls c ts), fs) ->
@@ -220,9 +233,9 @@ Inductive step: stmt -> store -> heap -> class_table -> store -> heap -> Prop :=
    σ' = update σ y (TCls c' TSBot, &o) ->
    step (sstore $x f $y) σ h ct σ' h'
    
- | step_mcallC: forall σ h ct x y m z c o fl init ml Tp s t σ' h' ts r,
+ | step_mcallC: forall σ h ct x y m z c d o fl init ml Tp s t σ' h' ts r,
    indexr y σ = Some ((TCls c ts), &o) ->  (* receiver *)
-   indexr c ct = Some (cls_def fl init ml) ->
+   indexr c ct = Some (cls_def d fl init ml) ->
    indexr m ml = Some (m_decl Tp TBool s t) ->   (* find the method def in ct*)
    step (s <~ˢ $y; $z) σ h ct σ' h' ->
    teval (t <~ᵗ $y; $z) σ' h' (TBool, r) ->
@@ -230,9 +243,9 @@ Inductive step: stmt -> store -> heap -> class_table -> store -> heap -> Prop :=
    z < length σ ->
    step (smcall $x $y m $z) σ h ct (update σ' x (TBool, r)) h'  
 
- | step_mcallS: forall σ h ct x y m z c c' o fl init ml Tp s t σ' h' ts r,
+ | step_mcallS: forall σ h ct x y m z c d c' o fl init ml Tp s t σ' h' ts r,
    indexr y σ = Some ((TCls c ts), &o) ->  (* receiver *)
-   indexr c ct = Some (cls_def fl init ml) ->
+   indexr c ct = Some (cls_def d fl init ml) ->
    indexr m ml = Some (m_decl Tp (TCls c' TSShared) s t) ->   (* find the method def in ct*)
    step (s <~ˢ $y; $z) σ h ct σ' h' ->
    teval (t <~ᵗ $y; $z) σ' h' (TCls c' TSShared, r) ->
@@ -240,9 +253,9 @@ Inductive step: stmt -> store -> heap -> class_table -> store -> heap -> Prop :=
    z < length σ ->
    step (smcall $x $y m $z) σ h ct (update σ' x (TCls c' TSShared, r)) h'  
 
- | step_mcallU: forall σ h ct x y m z c c' o fl init ml Tp s t σ' h' ts r xt,
+ | step_mcallU: forall σ h ct x y m z c d c' o fl init ml Tp s t σ' h' ts r xt,
    indexr y σ = Some ((TCls c ts), &o) ->  (* receiver *)
-   indexr c ct = Some (cls_def fl init ml) ->
+   indexr c ct = Some (cls_def d fl init ml) ->
    indexr m ml = Some (m_decl Tp (TCls c' TSUnique) s t) ->   (* find the method def in ct*)
    step (s <~ˢ $y; $z) σ h ct σ' h' ->
    teval (t <~ᵗ $y; $z) σ' h' (TCls c' TSUnique, r) ->
@@ -269,10 +282,10 @@ Inductive step: stmt -> store -> heap -> class_table -> store -> heap -> Prop :=
     step (open_rec_stmt 0 $(S (length σ)) s) ((TCls c TSUnique, r) :: (update σ x (TCls c TSBot, r))) h ct (((T', r') :: σ')) h' ->
     step (slettm (TCls c TSUnique) $x s) σ h ct σ' h'
   
-  | step_letnew: forall σ σ' h h' ct c ps objrec s v fs init ms ts ts', 
+  | step_letnew: forall σ σ' h h' ct c d ps objrec s v fs init ms ts ts', 
     (* comment below for assumption that we assign same initial value for any constructor args *)
     closed_var_list 0 (length σ) ps ->
-    indexr c ct = Some(cls_def fs init ms) ->
+    indexr c ct = Some(cls_def d fs init ms) ->
     varlist_eval ps σ h objrec ->
     object_valid_semantic objrec σ h ct fs ->
     (* (forall objrec', object_valid_semantic objrec' h ct fs -> objrec = objrec') -> *)
@@ -309,7 +322,6 @@ Inductive step: stmt -> store -> heap -> class_table -> store -> heap -> Prop :=
     c < l ->
     (* step s σ h ct σ' h' -> *)
     step (sloop $x c l s) σ h ct σ h
-
 .
 
 Lemma step_extend_store: forall {s σ h ct σ' h'}, step s σ h ct σ' h' -> 
@@ -547,11 +559,19 @@ Proof.
 Qed.
   
 Lemma object_valid_hit: forall {object σ h ct fs f T v }, object_valid_semantic object σ h ct fs ->
-  indexr f object = Some (T, v) -> (value v /\ value_runtime_ty σ h ct v T /\ indexr f fs = Some T ).
+  indexr f object = Some (T, v) -> (exists U, value v /\ value_runtime_ty σ h ct v U /\ 
+  indexr f fs = Some U /\ T <: U ~ ct).
 Proof.
   intros. induction H; subst. inversion H0. destruct (f =? length o) eqn: E1. 
   + apply Nat.eqb_eq in E1. subst. rewrite indexr_head in H0. inversion H0; subst. rewrite H2.
-    rewrite indexr_head. intuition.
+    rewrite indexr_head. exists T0. intuition. econstructor; eauto.
   + apply Nat.eqb_neq in E1. rewrite indexr_skip in H0; auto. intuition. rewrite H2 in E1.
     rewrite indexr_skip; auto.
+Qed.
+
+Lemma rt_bool_inversion: forall {σ h ct v}, value_runtime_ty σ h ct v TBool ->
+  v = ttrue \/ v = tfalse.
+Proof.
+  intros. remember TBool as T. induction H; auto. 1,2: inversion HeqT.
+  subst. specialize (sub_bool_inversion H0) as Hty. subst. intuition.
 Qed.
