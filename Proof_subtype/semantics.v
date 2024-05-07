@@ -575,3 +575,55 @@ Proof.
   intros. remember TBool as T. induction H; auto. 1,2: inversion HeqT.
   subst. specialize (sub_bool_inversion H0) as Hty. subst. intuition.
 Qed.
+
+Lemma rt_cls_inversion: forall {σ h ct v c ts}, value_runtime_ty σ h ct v (TCls c ts) ->
+  exists l, v = &l /\ l < length h.
+Proof.
+  intros. remember (TCls c ts) as T. generalize dependent c. 
+  induction H; intros; try inversion HeqT; subst.
+  1,2: exists l; apply indexr_var_some' in H0; intuition. 
+  specialize (sub_cls_inversion H0) as HT. destruct HT as [c' HT].
+  subst. specialize (IHvalue_runtime_ty c'). intuition.
+Qed.
+
+Lemma rt_cls_length: forall {σ h ct v c ts}, wf_ct ct -> 
+  value_runtime_ty σ h ct v (TCls c ts) ->
+  c < length ct.
+Proof.
+  intros. remember (TCls c ts) as T. generalize dependent c.
+  induction H0; intros; try inversion HeqT; subst.
+  1,2: auto. specialize (sub_cls_inversion H1) as HT. 
+  destruct HT as [c' HT]; subst. specialize (sub_cls_hit_ct H H1).
+  intuition.
+Qed.
+
+Lemma teval_weakening_stack: forall {T v T' v' σ h}, teval v σ h (T, v) ->
+  teval v ((T', v') :: σ) h (T, v).
+Proof.
+  intros. inversion H; subst; econstructor; eauto.
+  apply indexr_var_some' in H5 as Heq. rewrite indexr_skip; auto; lia.
+  apply indexr_var_some' in H2 as Heq. rewrite indexr_skip; auto; lia.
+Qed.
+
+Lemma teval_tighten_rt: forall {σ h ct v T T'}, teval v σ h (T, v) ->
+  value_runtime_ty σ h ct v T ->
+  T' <: T ~ ct -> 
+  value_runtime_ty σ h ct v T' ->
+  wf_ct ct ->
+  T' = T.
+Proof.
+  intros. generalize dependent T'. induction H0; intros. 
+  1,2: specialize (sub_bool_inversion H1) as Heq; auto. 
+  1,2: specialize (sub_cls_inversion H4) as Heq; destruct Heq as [c' Heq]; subst.
+  remember (&l) as t. induction H5. 1,2: inversion H. 1,2: inversion Heqt; subst;
+  rewrite H6 in H1; inversion H1; subst; auto. intuition. assert (T <: TCls c ts ~ ct).
+  econstructor; eauto. intuition; subst. specialize (sub_antisym H3 H4 H6) as Heq.
+  subst; auto. remember (&l) as t. induction H5. 1,2: inversion H. 
+  specialize (sub_cls_inversion H4) as Heq. destruct Heq as [c'' Heq]. 
+  inversion Heq; subst. contradiction. subst. inversion Heqt; subst.
+  rewrite H6 in H1; inversion H1; intuition. assert (T <: TCls c TSUnique ~ ct).
+  econstructor; eauto. subst; intuition; subst. 1,2: specialize (sub_antisym H3 H4 H6) as He1;
+  subst; auto. induction H4. 1,2: inversion H; subst; auto. 1,2: inversion H; subst;
+  rewrite H11 in H5; inversion H5; subst; auto. assert (T0 <: U ~ ct). econstructor;
+  eauto. intuition. subst. specialize (sub_antisym H3 H2 H5) as Heq. auto.
+Qed.

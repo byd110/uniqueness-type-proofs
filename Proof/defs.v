@@ -501,5 +501,3 @@ Proof. induction s; intros b Hc; inversion Hc; subst; intros; simpl; intuition;
 Qed.
 
 (* Definition consume (t: tm) () *)
-                     
-

@@ -22,7 +22,7 @@ Inductive ts: Type :=
 Inductive ty: Type :=
 | TCls   : cn -> ts -> ty
 | TBool  : ty
-| TACls  : cn -> ts -> ts -> ty
+(* | TACls  : cn -> ts -> ts -> ty *)
 (* | TUnit  : ty *)
 (* | TFun   : ty -> ty -> ty *)
 .
@@ -114,25 +114,6 @@ Inductive wf_constructor : list ty (* fields ty *) -> (constructor_decl ) -> Pro
     wf_constructor fds (init_decl fds stmt tm)
 .
 
-Reserved Notation "T '<:' U '~' ct" (at level 40).
-
-Inductive subtype : ty -> ty -> class_table -> Prop := 
-  | S_refl: forall T ct,
-      T <: T ~ ct
-  
-  | S_trans: forall T1 T2 T3 ct,
-      T1 <: T2 ~ ct ->
-      T2 <: T3 ~ ct ->
-      T1 <: T3 ~ ct
-  
-  | S_def: forall c1 c2 ts ct fs init ml,
-      indexr c1 ct = Some (cls_def c2 fs init ml) ->
-      (TCls c1 ts) <: (TCls c2 ts) ~ ct
-where "T '<:' U '~' ct " := (subtype T U ct).
-
-#[global] Hint Constructors subtype : core.
-
-
 Inductive wf_ty: ty -> class_table -> Prop :=
   (* | wf_TBot : forall ct,
      wf_ty TBot ct  
@@ -159,6 +140,24 @@ Inductive wf_normal_ty : ty -> class_table -> Prop :=
 . 
 #[global] Hint Constructors wf_normal_ty : core.
 
+Reserved Notation "T '<:' U '~' ct" (at level 40).
+
+Inductive subtype : ty -> ty -> class_table -> Prop := 
+  | S_refl: forall T ct,
+      wf_ty T ct ->
+      T <: T ~ ct
+  
+  | S_trans: forall T1 T2 T3 ct,
+      T1 <: T2 ~ ct ->
+      T2 <: T3 ~ ct ->
+      T1 <: T3 ~ ct
+  
+  | S_def: forall c1 c2 ts ct fs init ml,
+      indexr c1 ct = Some (cls_def c2 fs init ml) ->
+      (TCls c1 ts) <: (TCls c2 ts) ~ ct
+where "T '<:' U '~' ct " := (subtype T U ct).
+
+#[global] Hint Constructors subtype : core.
 
 Inductive wf_field_decl: list ty -> class_table -> Prop :=
 | wf_field_decl_nil: forall ct,
@@ -202,6 +201,16 @@ Inductive wf_ct : class_table -> Prop :=
 Lemma wf_ct_inversion: forall{c ct}, wf_ct (c::ct) -> wf_ct ct.
 Proof. intros. inversion H. subst. auto.
 Qed. 
+
+Lemma wf_ct_comp: forall {d fl init ml c ct}, wf_ct ct ->
+  indexr c ct = Some (cls_def d fl init ml) ->
+  d < c.
+Proof.
+  intros. induction H. inversion H0. destruct (c =? length ct) eqn: E1.
+  + apply Nat.eqb_eq in E1; subst. rewrite indexr_head in H0.
+    inversion H0; subst; lia.
+  + apply Nat.eqb_neq in E1. rewrite indexr_skip in H0; auto.
+Qed.
 
 Lemma wf_hit: forall {c ct}, wf_ct ct -> c < length ct ->
   (exists d init fl ml, indexr c ct = Some (cls_def d fl init ml)).
@@ -584,3 +593,93 @@ Proof.
   intuition. destruct H1 as [c' H1]. specialize (IHsubtype2 c').
   intuition. inversion HeqU; subst. exists c2. intuition.
 Qed.
+
+Lemma sub_cls_hit_ct: forall {c c' ts ct}, wf_ct ct ->  
+  (TCls c' ts) <: (TCls c ts) ~ ct ->
+  c < length ct /\ c' < length ct.
+Proof.
+  intros. remember (TCls c ts0) as T; remember (TCls c' ts0) as U.
+  generalize dependent c. generalize dependent c'.
+  induction H0; intros. rewrite HeqU in HeqT; inversion HeqT; subst. inversion H0; subst.
+  apply indexr_var_some' in H4; auto. subst. specialize (sub_cls_inversion H0_0) as Hty. 
+  destruct Hty as [c0 Hty]; subst. intuition; specialize (H0 c0); specialize (H1 c'); 
+  intuition; specialize (H2 c); specialize (H0 c0); intuition.
+  inversion HeqT; inversion HeqU; subst. apply indexr_var_some' in H0 as Heq.
+  specialize (wf_ct_hit' H Heq) as H'. destruct H' as 
+  [d [init1 [fl1 [ml1 [e [init2 [fl2 [ml2 H']]]]]]]]. intuition.
+  rewrite H1 in H0; inversion H0; subst. apply indexr_var_some' in H3; auto.
+Qed.
+
+Lemma wf_cls_field_length: forall {c c' ct ts}, wf_ct ct ->
+  (TCls c' ts) <: (TCls c ts) ~ ct ->
+  exists d1 fl1 init1 ml1 d2 fl2 init2 ml2,
+  indexr c ct = Some (cls_def d1 fl1 init1 ml1) /\
+  indexr c' ct = Some (cls_def d2 fl2 init2 ml2) /\
+  length fl2 >= length fl1 /\
+  (forall f, f < length fl1 -> indexr f fl1 = indexr f fl2).
+Proof.
+  intros. remember (TCls c' ts0) as U; remember (TCls c ts0) as T.
+  generalize dependent c. generalize dependent c'. induction H0; intros.
+  + rewrite HeqU in HeqT; inversion HeqT; subst. inversion H0; subst.
+    apply indexr_var_some' in H4 as H4'. specialize (wf_ct_hit' H H4') as H5.
+    destruct H5 as [d [init [fl [ml [e [init' [fl' [ml' H5]]]]]]]] .
+    exists d, fl, init, ml, d, fl, init, ml. intuition.
+  + subst. specialize (sub_cls_inversion_reverse H0_) as Heq. destruct Heq as [c0 Heq].
+    subst. intuition. specialize (H0 c0); specialize (H1 c'). intuition.
+    specialize (H0 c0); specialize (H2 c); intuition. destruct H1 as 
+    [d11 [fl11 [init11 [ml11 [d12 [fl12 [init12 [ml12 H1]]]]]]]].
+    destruct H2 as [d21 [fl21 [init21 [ml21 [d22 [fl22 [init22 [ml22 H2]]]]]]]].
+    intuition. rewrite H2 in H1; inversion H1; subst. exists d11, fl11, init11, ml11,
+    d22, fl22, init22, ml22. intuition. specialize (H7 f). intuition.
+    assert (f < length fl21) by lia. specialize (H8 f). intuition.
+    rewrite H10 in H9. auto.
+  + inversion HeqU; inversion HeqT; subst. apply indexr_var_some' in H0 as H0'. 
+    specialize (wf_ct_hit' H H0') as H6.
+    destruct H6 as [d [init1 [fl1 [ml1 [e [init2 [fl2 [ml2 H6]]]]]]]] .
+    intuition. rewrite H1 in H0; inversion H0; subst.
+    exists e, fl2, init2, ml2, c, fs, init, ml. intuition.
+Qed.
+
+Lemma sub_cls_comp: forall {c1 c2 ts ct}, wf_ct ct ->
+  TCls c1 ts <: TCls c2 ts ~ ct ->
+  c2 <= c1.
+Proof. 
+  intros. remember (TCls c1 ts0) as T. remember (TCls c2 ts0) as U. 
+  generalize dependent c1. generalize dependent c2.
+  induction H0; intros. subst; inversion HeqT; subst; auto. intuition.
+  subst. specialize (sub_cls_inversion H0_0) as Heq. destruct Heq as [c' Heq].
+  subst. specialize (H1 c2); specialize (H0 c'). intuition.
+  specialize (H1 c1); specialize (H2 c'); intuition.
+  inversion HeqU; subst. inversion HeqT; subst. specialize (wf_ct_comp H H0).
+  intuition.
+Qed.
+
+Lemma sub_wf_ty: forall {T U ct},  wf_ct ct -> T <: U ~ ct -> 
+  wf_ty T ct /\ wf_ty U ct.
+Proof.
+  intros. split. 
+  + induction H0; subst; try econstructor; eauto.
+  + induction H0; subst; eauto. assert (TCls c1 ts0 <: TCls c2 ts0 ~ ct). 
+    econstructor; eauto. specialize (wf_cls_field_length H H1) as Hct.
+    destruct Hct as [d1 [fl1 [init1 [ml1 [d2 [fl2 [init2 [ml2 Hct]]]]]]]].
+    intuition. econstructor; eauto.
+Qed.
+
+Lemma sub_antisym: forall {T U ct}, wf_ct ct ->
+  T <: U ~ ct ->
+  U <: T ~ ct ->
+  T = U.
+Proof.
+  intros. induction H0; auto. assert (T2 <: T1 ~ ct). econstructor; eauto.
+  assert (T3 <: T2 ~ ct). econstructor; eauto. intuition.
+  rewrite H3 in H5; auto. specialize (sub_cls_hit_ct H H1).
+  intuition. specialize (wf_hit H H4) as Hc2. 
+  destruct Hc2 as [c3 [init2 [fl2 [ml2 Hc2]]]].
+  specialize (wf_hit H H3) as Hc1. destruct Hc1 as [c2' [init1 [fl1 [ml1 Hc1]]]].
+  rewrite Hc1 in H0; inversion H0; subst. specialize (sub_cls_comp H H1) as Heq1.
+  remember (TCls c2 ts0) as U.
+  induction H1; auto. subst. intuition. subst. intuition.
+  inversion HeqU; subst. assert (TCls c1 ts0 <: TCls c2 ts0 ~ ct).
+  econstructor; eauto. specialize (sub_cls_comp H H2) as Heq2. 
+  assert (c1 = c2) by lia. subst. rewrite Hc1 in H1; inversion H1; subst; auto.
+Qed. 

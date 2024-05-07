@@ -344,6 +344,17 @@ Proof.
   exists U', c, ts. intuition. econstructor; eauto. 
 Qed.
 
+Lemma sub_f_same_type: forall {c c' ct ts f U}, wf_ct ct ->
+  (TCls c' ts) <: (TCls c ts) ~ ct ->
+  f_has_ty ct c f U ->
+  f_has_ty ct c' f U.
+Proof.
+  intros. inversion H1; subst. specialize (wf_cls_field_length H H0) as Hl.
+  destruct Hl as [d1 [fl1 [init1 [ml1 [d2 [fl2 [init2 [ml2 Hl]]]]]]]].
+  intuition. rewrite H5 in H2; inversion H2; subst. apply indexr_var_some' in H3 as Hf.
+  specialize (H9 f). intuition. rewrite H8 in H3. econstructor; eauto.
+Qed.
+
 (* Lemma sub_f_has_ty: forall {ct c c' f T ts}, f_has_ty ct c f T -> (TCls c' ts) <: (TCls c ts) ~ ct ->
   f_has_ty ct c' f T.
 Proof.

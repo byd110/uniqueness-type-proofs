@@ -40,7 +40,7 @@ Definition StoreOK (Γ: tenv)(σ: store)(h: heap)(ct: class_table) : Prop :=
    ((exists c vx, Tx = TCls c TSBot /\ indexr x σ = Some (TCls c TSBot, vx)) \/
    (exists vx, indexr x σ = Some (Tx, vx) /\ (value vx)  /\ 
     value_runtime_ty σ h ct vx Tx /\ tm_has_ty Γ ct $x Tx /\
-
+    teval vx σ h (Tx, vx) /\
     (forall c ts, Tx = (TCls c ts) -> (exists l fvalues, l < length h /\ vx = &l /\ 
     indexr l h = Some ((TCls c ts), fvalues) ))))
 .
@@ -188,8 +188,6 @@ Proof.
 Qed.
 
 
-
-
 (* added *)
 (* Lemma update_keep_type: forall { Γ σ h ct vx x0 T v}, tm_has_ty Γ σ h ct v T ->
   value vx -> tm_has_ty Γ (update σ x0 (T, vx)) h ct v T.
@@ -225,15 +223,15 @@ Proof. intros Γ σ h ct x c ts HCT HT. specialize (tm_has_ty_closed HT) as Hcl.
        specialize (H8 x (TCls c ts)). intuition.
        destruct H8 as [c' [vx H8]]. intuition. inversion H2; subst. contradiction.
        destruct H8 as [vx H4']. intuition.
-       specialize (H12 c ts). intuition. destruct H11 as [l [fvalues H8']]. intuition.
+       specialize (H13 c ts). intuition. destruct H12 as [l [fvalues H8']]. intuition.
        subst. exists c, l. intuition. constructor; auto.
        specialize (sub_var_inversion HT) as Hty. destruct Hty as [U Hty].
        intuition. specialize (sub_cls_inversion H6) as Hsub. destruct Hsub as [c' Hsub];
        subst. inversion H2; intuition. specialize (H12 x (TCls c' ts)). intuition.
        destruct H12 as [c'' [vx H12]]. specialize (sub_ts_not_bot H11 HT). intuition.
        inversion H13; subst. contradiction.
-       destruct H12 as [vx H12]. intuition. specialize (H16 c' ts). intuition.
-       destruct H15 as [l [fvalues H15]]. intuition; subst. exists c', l.
+       destruct H12 as [vx H12]. intuition. specialize (H17 c' ts). intuition.
+       destruct H16 as [l [fvalues H16]]. intuition; subst. exists c', l.
        intuition. econstructor; eauto. 
   Qed.
   
@@ -254,20 +252,10 @@ Proof. intros Γ σ h ct T x f HCT HT.
        specialize (H6 x c ts). intuition. 
        destruct H8 as [c'' [d [fl [init [ml [oid' H5']]]]]]. intuition.
        rewrite H6 in H3; inversion H3; subst.
-       specialize (H12 f U). 
-       inversion H1; subst. 
-       rewrite H13 in H12; inversion H12; subst.
-       intuition. destruct H17 as [vf [object H15']]. intuition.
-       exists T, vf; intuition. econstructor; eauto.
-       specialize (sub_facc_inversion HT) as Hty.
-       destruct Hty as [U [c [ts Hty]]]. intuition.
-       specialize (var_obj_type_safety HCT H2). intuition.
-       destruct H3 as [c' [oid H0']]. inversion HCT; intuition.
-       specialize (H9 x c ts). intuition.
-       destruct H11 as [c'' [d [fl [init [ml [oid' H11]]]]]]. intuition.
-       specialize (H15 f U). inversion H4; subst. rewrite H14 in H11;
-       inversion H11; subst. intuition. destruct H18 as [vf [object H18]].
-       exists U, vf. intuition. econstructor; eauto.
+       specialize (H12 f U). specialize (sub_f_same_type HCT' H8 H1) as HfT.
+       inversion HfT; subst. rewrite H11 in H10; inversion H10; subst.
+       intuition. destruct H15 as [vf [object [H15']]]. intuition.
+       exists U, vf; intuition. econstructor; eauto.
 Qed.
 
 Lemma term_type_safety: forall {t Γ σ h ct T}, 
@@ -334,7 +322,7 @@ Qed.
 
 
 Lemma StoreOK_ext_TBool: forall {Γ σ h ct}, StoreOK Γ σ h ct ->
-  forall {v}, value_runtime_ty σ h ct v TBool -> value v -> 
+  forall v, value_runtime_ty σ h ct v TBool -> value v -> 
   StoreOK (TBool::Γ) ((TBool, v)::σ) h ct.
 Proof. intros. unfold StoreOK in *. split. simpl. lia. intuition.
       destruct (Nat.eqb x (length σ)) eqn: Heqx.
@@ -342,16 +330,17 @@ Proof. intros. unfold StoreOK in *. split. simpl. lia. intuition.
       rewrite indexr_head in H3. inversion H3; subst. exists v. intuition. 
       rewrite H2; rewrite indexr_head; auto. specialize (rt_bool_inversion H0) as Heq.
       intuition; subst; econstructor. econstructor; eauto.
-      rewrite indexr_head; auto. inversion H5.
+      rewrite indexr_head; auto. specialize (rt_bool_inversion H0) as Ht.
+      intuition; subst; econstructor. inversion H5.
     + apply Nat.eqb_neq in Heqx. erewrite indexr_skip; eauto. rewrite <- H2 in Heqx.  
       specialize (H4 x Tx). rewrite indexr_skip in H3; auto. intuition.
       right. destruct H4 as [vx H4]. exists vx. intuition. 
       eapply weakening_tm_runtime_store_TBool; eauto.
-      eapply weakening_tm; eauto. 
+      eapply weakening_tm; eauto. eapply teval_weakening_stack; auto.
 Qed.
 
 Lemma HeapOK_ext_TBool: forall {Γ σ h ct}, StoreOK Γ σ h ct ->  HeapOK Γ σ h ct -> HeapOK' Γ σ h ct ->
-  forall {v}, value_runtime_ty σ h ct v TBool -> value v -> 
+  forall v, value_runtime_ty σ h ct v TBool -> value v -> 
   HeapOK (TBool::Γ) ((TBool, v)::σ) h ct.
 Proof. intros. unfold HeapOK in *; intros. specialize (sub_var_inversion H4) as Hty.
       destruct Hty as [U Hty]. intuition. specialize (sub_cls_inversion H6) as Heq.
@@ -369,68 +358,75 @@ Proof. intros. unfold HeapOK in *; intros. specialize (sub_var_inversion H4) as 
       - apply Nat.eqb_eq in heqx. assert (indexr x σ = None). { rewrite indexr_var_none. lia. }
         rewrite H12 in H0. inversion H0.
       - apply Nat.eqb_neq in heqx.  eapply indexr_skip in heqx.
-        exists c'', d, fl, init, ml, oid. intuition. erewrite heqx. eauto.
-        specialize (H13 f Tf). intuition. 
-        destruct H9 as [vf [fvalues H9]]. exists vf, fvalues. intuition.
+        exists c'', d, fl, init, ml, oid. intuition. erewrite heqx. eauto. 
+        econstructor; eauto. specialize (H13 f Tf). intuition. 
+        destruct H14 as [vf [fvalues H14]]. exists vf, fvalues. intuition.
         eapply weakening_tm; eauto. eapply weakening_tm_runtime_store_TBool; eauto.
 Qed.
 
 
 Lemma CtxOK_ext_TBool: forall {Γ σ h ct}, CtxOK Γ σ h ct ->
-  forall {v}, value_runtime_ty σ h ct v TBool -> value v -> 
+  forall v, value_runtime_ty σ h ct v TBool -> value v -> 
   CtxOK (TBool::Γ) ((TBool, v)::σ) h ct.
 Proof. intros. unfold CtxOK in *; intuition. 
        eapply StoreOK_ext_TBool; eauto.
        eapply HeapOK_ext_TBool; eauto.
        unfold HeapOK' in *. intros. specialize (H4 o c ts object). intuition. 
-       destruct H5 as [fl [init [ml H6]]]. intuition. exists fl, init, ml. intuition.
-       specialize (H7 f). intuition. destruct H8 as [T [v' H8]]. 
+       destruct H5 as [d [fl [init [ml H6]]]]. intuition. exists d, fl, init, ml. 
+       intuition. specialize (H7 f). intuition. destruct H8 as [T [v' H8]]. 
        exists T, v'. intuition. eapply weakening_tm_runtime_store_TBool; eauto.
 Qed.
 
 Lemma StoreOK_ext: forall {Γ σ h ct T v}, CtxOK Γ σ h ct ->
   value_runtime_ty σ h ct v T -> value v -> (forall c : cn, T <> TCls c TSUnique) ->
+  teval v σ h (T, v) -> 
   StoreOK (T::Γ) ((T, v)::σ) h ct.
 Proof. 
   intros. inversion H. unfold StoreOK in *. intuition. simpl. lia. 
   destruct (x =? length Γ) eqn: E1.
-  + apply Nat.eqb_eq in E1; subst. rewrite indexr_head in H6; auto. inversion H6; subst. 
-    inversion H0; subst.  
-    - right. exists ttrue. rewrite H5. rewrite indexr_head; auto. intuition. econstructor; eauto.
-      econstructor; eauto. rewrite <- H5; rewrite indexr_head; auto. inversion H9.
-    - right. exists tfalse. rewrite H5. rewrite indexr_head; auto. intuition. econstructor; eauto.
-      econstructor; eauto. rewrite <- H5; rewrite indexr_head; auto. inversion H9.
-    - induction ts. contradiction. right. exists & l. intuition. rewrite H5.
-      rewrite indexr_head; auto. inversion H0; subst; econstructor; eauto.
+  + apply Nat.eqb_eq in E1; subst. rewrite indexr_head in H7; auto. inversion H7; subst. 
+    induction Tx.
+    - induction t. specialize (H2 c); contradiction. right. specialize (rt_cls_inversion H0) as Ht.
+      destruct Ht as [l Ht]. intuition; subst. exists &l. intuition.
+      rewrite H6; rewrite indexr_head; auto. inversion H3; subst.
+      econstructor; eauto. 1,3: specialize (rt_cls_length H5 H0) as Hl; auto.
       econstructor; eauto. rewrite indexr_head; auto. discriminate.
-      inversion H0; subst. eapply indexr_var_some in H18; eauto. destruct H18; eauto.
-      inversion H12; subst. exists l, fs. intuition. apply indexr_var_some' in H10; auto.
-      left. exists c, &l. intuition. rewrite H5. rewrite indexr_head; auto.
-    - specialize (H2 c). contradiction.
-  + apply Nat.eqb_neq in E1. rewrite indexr_skip in H6; auto. specialize (H8 x Tx).
-    intuition. 
-    - left. destruct H8 as [c' [v' H8]]. exists c', v'. intuition. rewrite indexr_skip; auto.
-      rewrite <- H5; auto.
-    - right. destruct H8 as [vx H8]. exists vx. intuition. rewrite indexr_skip; auto.
-      rewrite <- H5; auto. 2: inversion H11; econstructor; eauto; rewrite indexr_skip; auto.
-      inversion H10; subst. 1-3: econstructor; eauto. eapply runtime_ty_unique; eauto.
-      intuition.
-      * destruct H16. left. exists x0. unfold unique in *. intuition. specialize (H17 x).
-        intuition; subst. rewrite indexr_skip; auto. rewrite H5 in E1; auto.
+      apply indexr_var_some in Hl. destruct Hl; econstructor; eauto.
+      discriminate. inversion H3; subst. econstructor; eauto. inversion H3; subst. 
+      inversion H10; subst. exists l, object. intuition.
+      left. exists c, v. intuition. rewrite H6. rewrite indexr_head; auto.
+    - right. exists v. intuition. rewrite H6; rewrite indexr_head; auto. 
+      specialize (rt_bool_inversion H0) as Ht. intuition; subst; econstructor; eauto.
+      econstructor; eauto. rewrite indexr_head; auto. eapply teval_weakening_stack;
+      eauto. inversion H10.
+  + apply Nat.eqb_neq in E1. rewrite indexr_skip in H7; auto. specialize (H9 x Tx).
+    intuition.
+    - left. destruct H9 as [c' [v' H9]]. exists c', v'. intuition. rewrite indexr_skip; auto.
+      rewrite <- H6; auto.
+    - right. destruct H9 as [vx H9]. exists vx. intuition. rewrite indexr_skip; auto.
+      rewrite <- H6; auto. 2: eapply weakening_tm; eauto. 
+      induction H11. 1-3: econstructor; eauto. 1: {
+      eapply runtime_ty_unique; eauto. intuition.
+      * destruct H17. left. exists x0. unfold unique in *. intuition. specialize (H18 x).
+        intuition; subst. rewrite indexr_skip; auto. rewrite H6 in E1; auto.
         destruct (x' =? length σ) eqn: E2.
-        ++ apply Nat.eqb_eq in E2; subst. rewrite indexr_head in H15. inversion H15; subst.
+        ++ apply Nat.eqb_eq in E2; subst. rewrite indexr_head in H16. inversion H16; subst.
            specialize (H2 c). contradiction.
-        ++ apply Nat.eqb_neq in E2. rewrite indexr_skip in H15; auto.
-      * right. intros. destruct H15. destruct (x0 =? length σ) eqn: E2.
-        ++ apply Nat.eqb_eq in E2; subst. rewrite indexr_head in H15. inversion H15; subst.
+        ++ apply Nat.eqb_neq in E2. rewrite indexr_skip in H16; auto.
+      * right. intros. destruct H16. destruct (x0 =? length σ) eqn: E2.
+        ++ apply Nat.eqb_eq in E2; subst. rewrite indexr_head in H16. inversion H16; subst.
            specialize (H2 c). contradiction.
-        ++ apply Nat.eqb_neq in E2. rewrite indexr_skip in H15. 2: rewrite <- H5; eauto. 
+        ++ apply Nat.eqb_neq in E2. rewrite indexr_skip in H16. 2: rewrite <- H6; eauto. 
            assert (exists x : nat, indexr x σ = Some (TCls c TSUnique, & l)).
-           exists x0; auto. apply H16 in H17; auto.
+           exists x0; auto. apply H17 in H18; auto. }
+      intuition. assert (value_runtime_ty σ h ct t U). econstructor; eauto.
+      specialize (teval_tighten_rt H13 H17 H14 H11 H5) as Heq. subst.
+      intuition. eapply teval_weakening_stack; eauto.
 Qed. 
 
 Lemma HeapOK_ext: forall {Γ σ h ct T v}, CtxOK Γ σ h ct ->
   value_runtime_ty σ h ct v T -> value v -> (forall c : cn, T <> TCls c TSUnique) ->
+  teval v σ h (T, v) -> 
   HeapOK (T::Γ) ((T, v)::σ) h ct.
 Proof. 
   intros. inversion H. intuition. unfold HeapOK in *; intros.  intuition.
@@ -440,20 +436,17 @@ Proof.
     assert (ts = TSShared). induction ts; auto. specialize(H2 c). contradiction.
     contradiction. subst. inversion H0; subst.
     specialize (CtxOK_wf_ct H) as H7. specialize (wf_hit H7 H9) as H8.
-    destruct H8 as [init [fl [ml H8]]]. exists fl, init, ml, l. intuition.
+    destruct H8 as [d [init [fl [ml H8]]]]. exists c, d, fl, init, ml, l. intuition.
     inversion H3. rewrite H10. rewrite indexr_head; auto.
     unfold HeapOK' in H6. specialize (H6 l c TSShared fs). intuition.
-    destruct H11 as [fl' [init' [ml' H11]]]. intuition. rewrite H6 in H8.
+    destruct H11 as [d' [fl' [init' [ml' H11]]]]. intuition. rewrite H6 in H8.
     inversion H8; subst. apply indexr_var_some' in H10 as H10'. rewrite H11 in H10'.
     specialize (H16 f). intuition. destruct H15 as [T [v H15]]. intuition.
     rewrite H10 in H21. inversion H21; subst. exists v, fs. intuition.
-    induction H15. 1,2: inversion H19; subst; econstructor; eauto; econstructor; eauto. 
-    inversion H19; subst. eapply ty_tm_facc with (c:= c); eauto. apply indexr_var_some in H20. 
-    destruct H20; eauto. econstructor; eauto. apply indexr_var_some in H20; auto. 
-    destruct H20; econstructor; eauto. specialize (StoreOK_wf_ct H3) as Hwf.
-    specialize (wf_ct_to_Tf_ts Hwf H6 H10) as Heq. contradiction.
-    inversion H19; subst. 1-3: econstructor; eauto. specialize (StoreOK_wf_ct H3) as Hwf.
-    specialize (wf_ct_to_Tf_ts Hwf H6 H10) as Heq. contradiction.
+    econstructor; eauto. 1,2: specialize (wf_ct_to_Tf H7 H6 H10) as Hwfty. auto.
+    econstructor; eauto. induction H19; subst. 1-3: econstructor; eauto.
+    specialize (wf_ct_to_Tf_ts H7 H6 H10) as Heq. contradiction.
+    intuition.
   + apply Nat.eqb_neq in Heqx. inversion H3. rewrite H7 in Heqx.
     eapply indexr_skip in Heqx as Heqx1. erewrite Heqx1 in *. 
     assert (tm_has_ty Γ ct $ x (TCls c ts)). rewrite <- H7 in Heqx. inversion H4; subst.
@@ -480,6 +473,7 @@ Qed.
 
 Lemma HeapOK'_ext: forall {Γ σ h ct T v}, CtxOK Γ σ h ct ->
   value_runtime_ty σ h ct v T -> value v -> (forall c : cn, T <> TCls c TSUnique) ->
+  teval v σ h (T, v) -> 
   HeapOK' (T::Γ) ((T, v)::σ) h ct.
 Proof.
   intros. inversion H. intuition. unfold HeapOK' in *. intuition.
@@ -492,6 +486,7 @@ Qed.
 
 Lemma CtxOK_ext: forall {Γ σ h ct T v}, CtxOK Γ σ h ct ->
   value_runtime_ty σ h ct v T -> value v -> (forall c : cn, T <> TCls c TSUnique) ->
+  teval v σ h (T, v) -> 
   CtxOK (T::Γ) ((T, v)::σ) h ct.
 Proof. 
   intros. unfold CtxOK; intuition. 
