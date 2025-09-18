@@ -1,4 +1,4 @@
 # uniqueness-type-proofs
-Working on this repo for the proof of the uniqueness type system.
-
-Current state: finished all the basic statements that change the typestate (transfering uniqueness). Now working on the method call and object new statements.
+This is the formalization of an uniqueness type system in a Java-like imperitive language. It's layered in two fold. 
+- The `Proof` holds the proof over a language without subtyping feature.
+- The `Proof_subtype` holds the proof over a language with subtyping/subclassing relation.
